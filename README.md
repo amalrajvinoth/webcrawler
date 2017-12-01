@@ -3,7 +3,7 @@
 This webcrawler project captures links, images, html meta, sitemap and shows in web interface. 
 This may not work properly on other domains except: `http://wiprodigital.com`
 
-Sample screenshot is attached.
+Sample screenshot is below: ![web crowler sample](/screenshot.PNG).
 
 ## Technologies/Tools Used
 
