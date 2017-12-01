@@ -1,0 +1,278 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <meta name="keywords" content="Web Crawler">
+    <meta name="description" content="Web Crawler">
+    <title>Web Crawler</title>
+
+    <link href="css/bootstrap/bootstrap.min.css" rel="stylesheet" type="text/css">
+    <link href="css/font-awesome/css/font-awesome.min.css" rel="stylesheet" type="text/css">
+    <link href="fancygrid/fancy.min.css" rel="stylesheet" type="text/css">
+    <link href="css/style.css" rel="stylesheet" type="text/css">
+
+    <script src="javascript/jquery/jquery.min.js"></script>
+    <script src="javascript/bootstrap/bootstrap.min.js"></script>
+    <script src="javascript/bootstrap/bootstrap-treeview.js"></script>
+    <script src="fancygrid/fancy.full.min.js"></script>
+
+    <script type="application/javascript">
+        $(document).ready(function () {
+            Fancy.DEBUG = true;
+            new FancyGrid({
+                renderTo: 'crawlResultGrid',
+                width: '100%',
+                height: '100%',
+                trackOver: true,
+                selModel: 'row',
+                textSelection: true,
+                theme: 'bootstrap',
+                menu: true,
+                emptyText: 'Nothing to Show',
+                data: {
+                    proxy: {
+                        type: 'rest',
+                        method: 'GET',
+                        autoLoad: false,
+                        url: '/api/v1.0/webcrawler/extract',
+                        reader: {
+                            root: 'resources'
+                        }
+                    }
+                },
+                clicksToEdit: 1,
+                columnLines: false,
+                columnClickData: true,
+                grouping: {
+                    by: 'group'
+                },
+                defaults: {
+                    type: 'string',
+                    editable: false,
+                    sortable: true,
+                    align: 'center' ,
+                    cellTip: function (o) {
+                        if (!o.value) {
+                            return false;
+                        }
+                        return o.value;
+                    }
+                },
+                columns: [{
+                    title: 'Name',
+                    index: 'name',
+                    width: 750,
+                    ellipsis: true
+                }, {
+                    title: 'Type',
+                    index: 'type',
+                    width: 150,
+                    cellAlign: 'center',
+                    render: function (o) {
+                        if (o.value == 'IMAGE') {
+
+                            o.value = '<i class="fa fa-picture-o fa-blue" aria-hidden="true"></i>';
+                        } else if (o.value == 'LINK') {
+                            var cls = (o.data.group == 'EXTERNAL') ? 'fa-red' : 'fa-green';
+                            o.value = '<i class="fa fa-link '+cls+'" aria-hidden="true"></i>';
+                        }
+                        return o;
+                    }
+                }, {
+                    title: 'Link',
+                    index: 'link',
+                    width: 650,
+                    ellipsis: true,
+                    render: function (o) {
+                        o.value = '<a href=' + o.value + '> ' + o.value + '</a>';
+
+                        return o;
+                    }
+                }]
+            });
+
+            $('#searchBtn').click(function() {
+                loadData($('#searchStr').val());
+            });
+
+            $('#searchStr').keypress(function(e) {
+                if(e.which == 13) {
+                    loadData($('#searchStr').val());
+                }
+            });
+
+            function loadMask() {
+                var sprinnerHtml =
+                    '<div class="container">' +
+                    '<div class="row">' +
+                    '<div id="loader">' +
+                    '<div class="dot"></div><div class="dot"></div>' +
+                    '<div class="dot"></div><div class="dot"></div>' +
+                    '<div class="dot"></div><div class="dot"></div>' +
+                    '<div class="dot"></div><div class="dot"></div>' +
+                    '<div class="loading">Loading...</div>' +
+                    '</div>' +
+                    '</div>' +
+                    '</div>';
+
+
+                $("#spinner").append(sprinnerHtml);
+                maskPage();
+            }
+            function hideMask() {
+                maskPage();
+                $("#spinner").empty();
+            }
+            function loadData(url) {
+                FancyGrid.get('crawlResultGrid').hideLoadMask();
+
+                loadMask()
+
+                var grid = FancyGrid.get('crawlResultGrid');
+                grid.data.proxy.params = {"url": url};
+                grid.load();
+
+                loadSitemap(url);
+            }
+
+            function loadSitemap(url) {
+                $.ajax({
+                    type: "GET",
+                    url: "/api/v1.0/webcrawler/extract?url="+url,
+                    error: function(r, textStatus, errorThrown) {
+                        $('#error-title').html(r.responseJSON.error+" - "+r.responseJSON.status);
+                        $('#error-body').text(r.responseJSON.exception+" : "+r.responseJSON.message);
+                        $('#popup').modal('show');
+                        hideMask();
+                    },
+                    success: function(data){
+                        updateSitemapDataWithLink(data.sitemap);
+
+                        $('#sitemap').treeview({
+                            data: data.sitemap,
+                            color: "#428bca",
+                            expandIcon: 'fa fa-plus',
+                            collapseIcon: 'fa fa-minus',
+                            highlightSelected: false
+                        });
+                        $('#sitemap').treeview('collapseAll', { silent: true });
+
+                        // Add website info dynamically.
+                        $("table thead").empty();
+                        $("table thead").append('<tr><th class="key-align">Website:</th><td>'+data.title+'</td></tr>');
+                        $("table thead").append('<tr><th class="key-align">Description:</th><td>'+data.description+'</td></tr>');
+                        $("table thead").append('<tr><th class="key-align">URL:</th><td>'+data.url+'</td></tr>');
+                        hideMask();
+                    }
+                });
+            }
+            
+            function updateSitemapDataWithLink(sitemapData) {
+                $.each(sitemapData, function(idx,sitemap) {
+                    sitemap.text = '<a href="'+sitemap.href+'">'+sitemap.text+'</a>';
+                    if(sitemap.nodes.length > 0) {
+                        updateSitemapDataWithLink(sitemap.nodes);
+                    }
+                });
+            }
+
+            /*** SITEMAP ***/
+            $('#sitemap').treeview({
+                color: "#428bca",
+                expandIcon: 'fa fa-plus',
+                collapseIcon: 'fa fa-minus',
+                enableLinks: true,
+                levels: 5
+            });
+
+            // Expand/collapse all
+            $('#btn-expand-all').on('click', function (e) {
+                $('#sitemap').treeview('expandAll', { levels: 5, silent: true });
+            });
+
+            $('#btn-collapse-all').on('click', function (e) {
+                $('#sitemap').treeview('collapseAll', { silent: true });
+            });
+
+            var isPageMasked = false,
+                mask = $('#mask');
+
+            var maskPage = function(){
+                if(isPageMasked){
+                    mask.hide();
+                } else {
+                    mask.show();
+                }
+                isPageMasked = !isPageMasked;
+            };
+        });
+    </script>
+</head>
+<body>
+<div id="mask"></div>
+<div class="container-fluid" style="height: 100%; overflow: hidden;">
+    <h4>Web Crawler</h4>
+    <div id="custom-search-input">
+        <div class="input-group col-md-12">
+            <input id="searchStr" type="text" class="form-control input-lg"
+                   placeholder="Enter website url to extract details like meta, sitemap, links, images etc.,"/>
+            <span class="input-group-btn">
+                <button id="searchBtn" class="btn btn-info btn-lg" type="button">
+                    <i class="fa fa-search" aria-hidden="true"></i>
+                </button>
+            </span>
+        </div>
+    </div>
+    <div class="panel panel-default">
+        <div class="panel-heading">
+            <h4>Website Meta Info</h4>
+        </div>
+        <table id="pageInfo" class="table table-responsive">
+            <thead>
+            </thead>
+        </table>
+    </div>
+    <div id="spinner"></div>
+
+    <div class="panel panel-default">
+        <div class="panel-heading">
+            <h4>Sitemap</h4>
+        </div>
+        <div id="sitemap" class="panel-body">
+        </div>
+        <div class="panel-footer">
+            <button id="btn-expand-all" class="btn btn-xs btn-primary">Expand all</button>
+            <button id="btn-collapse-all" class="btn btn-xs btn-warning">Collapse all</button>
+        </div>
+    </div>
+
+    <div class="panel panel-default">
+        <div class="panel-heading">
+            <h4>Links Identified</h4>
+        </div>
+        <div id="crawlResultGrid" class="panel-body" style="height: 100%;width:100%;margin-top: 10px;margin-bottom: 10px"></div>
+        </div>
+    </div>
+</div>
+
+<div id="popup" class="modal fade">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 id="error-title" class="modal-title"></h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p id="error-body"></p>
+            </div>
+            <div class="modal-footer" style="text-align: center;">
+                <button type="button" class="btn btn-primary" data-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+</body>
+</html>

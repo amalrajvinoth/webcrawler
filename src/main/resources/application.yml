@@ -1,0 +1,11 @@
+server:
+  port: 8080
+
+management:
+  port: 9000    
+  
+spring:
+  http:
+    multipart:
+      max-file-size: 100MB
+      max-request-size: 100MB
