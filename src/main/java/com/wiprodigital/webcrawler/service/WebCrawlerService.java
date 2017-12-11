@@ -46,7 +46,7 @@ public class WebCrawlerService {
         return cr;
     }
 
-    private String decode(String value) {
+    public String decode(String value) {
         String decodedText = null;
         try {
             decodedText = URLDecoder.decode(value, StandardCharsets.UTF_8.toString());

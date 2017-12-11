@@ -9,8 +9,11 @@ public class BadRequest extends RuntimeException {
     private static final long serialVersionUID = 1L;    
     private static final String INVALID_PARAM_MSG = "Invalid value [%s] found for paramater [%s].";
     private static final String INVALID_DATE_PARAM_MSG = "Invalid value [%s] found for paramater [%s]. Expected date format is [%s]";
-    
-    
+
+    public BadRequest(String msg) {
+        super(msg);
+    }
+
     public BadRequest(String paramName, String value) {
         super(String.format(INVALID_PARAM_MSG, value, paramName));
     }

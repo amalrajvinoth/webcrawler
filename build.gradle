@@ -67,3 +67,9 @@ war {
 bootRun {
     addResources = true
 }
+
+test {
+    testLogging {
+        events "passed", "skipped", "failed"
+    }
+}

@@ -175,8 +175,6 @@ class Extractor {
         return STATIC_RESOURCE.matcher(href).matches() && href.startsWith(urlStart);
     }
 
-
-
     CrawlResults extractAndGet() {
         extract(domainUrl.toString());
         cr.setSitemap(extractSitemap());
