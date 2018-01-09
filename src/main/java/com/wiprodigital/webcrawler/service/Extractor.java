@@ -8,16 +8,14 @@ import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 
 import java.net.URL;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 class Extractor {
 
-    private HashSet<String> links = new HashSet<>();
+    private HashSet<String> visitedLinks = new HashSet<>();
+    private Queue<String> links = new LinkedList<>();
     private CrawlResults cr = new CrawlResults();
 
     private URL domainUrl;
@@ -25,7 +23,7 @@ class Extractor {
     private long id = 0;
 
     private final static Pattern STATIC_RESOURCE = Pattern.compile(".*(\\.(css|js|gif|jpg|png|mp3|mp4|zip|gz))$");
-    private final static Pattern IMG_FROM_STYLE =  Pattern.compile("^.+url\\(.+[\"|']*((http|https|ftp).+[\\w\\W]+)[\"|']\\).+$");
+    private final static Pattern IMG_FROM_STYLE = Pattern.compile("^.+url\\(.+[\"|']*((http|https|ftp).+[\\w\\W]+)[\"|']\\).+$");
 
     private Logger logger = Logger.getLogger(this.getClass());
 
@@ -36,57 +34,69 @@ class Extractor {
             Document doc = Jsoup.connect(domainUrl.toString()).get();
             cr.setTitle(doc.title());
             Elements descElements = doc.select("meta[name=description]");
-            if(descElements != null) {
+            if (descElements != null) {
                 Element descEle = descElements.first();
-                if(descEle != null) {
+                if (descEle != null) {
                     String desc = descEle.attr("content");
                     cr.setDescription(desc);
                 }
             }
             cr.setUrl(domainUrl.toString());
-        } catch(Exception e) {
+        } catch (Exception e) {
             throw new RuntimeException("Failed to extract title from url [" + domainUrl.toString() + "]", e);
         }
     }
 
-    private void extract(String url) {
-        if (!links.contains(url)) {
+    private void extract() {
+        while (!links.isEmpty()) {
+            String link = links.remove();
+            crawl(link);
+            visitedLinks.add(link);
+        }
+    }
+
+    private void crawl(String url) {
+        if (!visitedLinks.contains(url) && (url.equalsIgnoreCase(domainUrl.toString())
+                ||  url.startsWith(urlStart) && url.matches("^.+\\.(html|htm|asp|php)$") && !isStaticResource(url))) {
             Document document = null;
             try {
                 document = Jsoup.connect(url).get();
             } catch (Exception e) {
-                logger.error("URL: " + url+", " + e.getMessage());
+                logger.error("URL: " + url + ", " + e.getMessage());
             }
-            if(document != null) {
-                try {
-                    links.add(url);
-                    Elements allLinks = document.select("[href],[src],[content],[style~=(?i)\\.(png|jpe?g)]");
+            crawl(document);
+        }
+    }
 
-                    for (Element page : allLinks) {
-                        String href = page.attr("abs:href");
-                        if (!links.contains(href) || !links.contains(page.attr("abs:src"))) {
-                            extractResource(page);
-                        } else if (page.is("[style~=(?i)\\.(gif|png|jpe?g)]")) {
-                            String style = page.attr("style");
-                            Matcher m = IMG_FROM_STYLE.matcher(style);
-                            while (m.find()) {
-                                String imgUrl = m.group(1);
-                                addResource(getLinkName(page), imgUrl, ResourceType.IMAGE, GroupType.STATIC);
-                            }
-                        }
-                        if (!links.contains(href) && href.startsWith(urlStart) && href.matches("^.+\\.(html|htm|asp|php)$") && !isStaticResource(href)) {
-                            extract(href);
+    void crawl(Document document) {
+        if (document != null) {
+            try {
+
+                Elements allLinks = document.select("[href],[src],[content],[style~=(?i)\\.(png|jpe?g)]");
+
+                for (Element page : allLinks) {
+                    String href = page.attr("abs:href");
+                    if (!visitedLinks.contains(href) || !visitedLinks.contains(page.attr("abs:src"))) {
+                        links.add(href);
+                        extractResource(page);
+                    } else if (page.is("[style~=(?i)\\.(gif|png|jpe?g)]")) {
+                        String style = page.attr("style");
+                        Matcher m = IMG_FROM_STYLE.matcher(style);
+                        while (m.find()) {
+                            String imgUrl = m.group(1);
+                            addResource(getLinkName(page), imgUrl, ResourceType.IMAGE, GroupType.STATIC);
                         }
                     }
-                } catch (Exception e) {
-                    throw new RuntimeException("Failed to extract details from url [" + url + "]", e);
                 }
+
+            } catch (Exception e) {
+                throw new RuntimeException("Failed to extract details from url [" + document.location() + "]", e);
             }
         }
     }
 
     private void addResource(String linkName, String url, ResourceType type, GroupType gType) {
-        if(url == null || url.trim().isEmpty()) {
+        if (url == null || url.trim().isEmpty()) {
             return;
         }
         Resource r = new Resource(++id, linkName, url, type);
@@ -96,35 +106,36 @@ class Extractor {
 
     private void extractResource(Element src) {
         if (src.is("img[src]")) {
-            addResource(getLinkName(src), src.attr("abs:src"), ResourceType.IMAGE,GroupType.STATIC);
-        } if (isInternalStaticResource(src.attr("abs:src")) || isInternalStaticResource(src.attr("abs:href"))) {
-            addResource(getLinkName(src), src.attr("abs:src"), ResourceType.LINK,GroupType.INTERNAL);
+            addResource(getLinkName(src), src.attr("abs:src"), ResourceType.IMAGE, GroupType.STATIC);
+        }
+        if (isInternalStaticResource(src.attr("abs:src")) || isInternalStaticResource(src.attr("abs:href"))) {
+            addResource(getLinkName(src), src.attr("abs:src"), ResourceType.LINK, GroupType.INTERNAL);
         } else if (src.attr("abs:href").startsWith(this.urlStart)) {
-            addResource(getLinkName(src), src.attr("abs:href"), ResourceType.LINK,GroupType.INTERNAL);
+            addResource(getLinkName(src), src.attr("abs:href"), ResourceType.LINK, GroupType.INTERNAL);
         } else {
-            addResource(getLinkName(src), src.attr("abs:href"), ResourceType.LINK,GroupType.EXTERNAL);
+            addResource(getLinkName(src), src.attr("abs:href"), ResourceType.LINK, GroupType.EXTERNAL);
         }
     }
 
     private String getLinkName(Element src) {
         String name = src.text();
-        if(src.is("link[href]")) {
+        if (src.is("link[href]")) {
             name = src.attr("rel");
         }
-        if(name == null || name.isEmpty()) {
+        if (name == null || name.isEmpty()) {
             name = src.attr("alt");
         }
-        if(name == null || name.isEmpty()) {
+        if (name == null || name.isEmpty()) {
             name = src.attr("title");
         }
 
-        if(name == null || name.isEmpty()) {
-            if(src.is("[href]")) {
+        if (name == null || name.isEmpty()) {
+            if (src.is("[href]")) {
                 String href = src.attr("abs:href");
                 try {
                     URL u = new URL(href);
                     name = u.getAuthority();
-                } catch (Exception ignore){
+                } catch (Exception ignore) {
                     // Ignore
                 }
             }
@@ -144,8 +155,8 @@ class Extractor {
                 Sitemap main = new Sitemap(mainMenu.text(), url);
                 Elements subMenus = menu.select("ul.dropdown-menu > li > a");
                 sitemapSet.clear();
-                for(Element subMenu : subMenus) {
-                    if(!sitemapSet.contains(subMenu.text())) {
+                for (Element subMenu : subMenus) {
+                    if (!sitemapSet.contains(subMenu.text())) {
                         // Avoid duplicate item.
                         sitemapSet.add(subMenu.text());
                         Sitemap child = new Sitemap(subMenu.text(), subMenu.attr("href"));
@@ -176,7 +187,8 @@ class Extractor {
     }
 
     CrawlResults extractAndGet() {
-        extract(domainUrl.toString());
+        links.add(domainUrl.toString());
+        extract();
         cr.setSitemap(extractSitemap());
         return cr;
     }
